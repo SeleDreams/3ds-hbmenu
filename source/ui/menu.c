@@ -148,16 +148,10 @@ void menuUpdate(void)
 	u32 held = hidKeysHeld();
 	u32 up = hidKeysUp();
 
-	if (firstStart)
+	if (firstStart && isDebugMode())
 	{
-		FILE *file = fopen("sdmc:/3dslink.txt", "r");
-		if (file)
-		{
-			fclose(file);
-			workerSchedule(netloaderTask, NULL);
-		}
+		workerSchedule(netloaderTask, NULL);
 	}
-	firstStart = false;
 
 	// Avoid registering a SELECT press with the Rosalina menu combo
 	// See https://github.com/mtheall/ftpd/commit/0db916db66ced76b7e4d05a0407189224c070ad0
@@ -286,6 +280,7 @@ void menuUpdate(void)
 		for (i = drawingGetFrames(); i; i--)
 			menuUpdateAnimation(menu, menuGetScrollHeight(menu), val);
 	}
+	firstStart = false;
 }
 
 void menuDrawTop(float iod)

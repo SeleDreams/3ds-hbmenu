@@ -4,20 +4,6 @@
 static Handle hbldrHandle;
 static Handle rosalinaHandle;
 
-static bool init(void)
-{
-	bool hbldr = R_SUCCEEDED(svcConnectToPort(&hbldrHandle, "hb:ldr"));
-	Result r = srvGetServiceHandle(&rosalinaHandle, "rosalina:dbg");
-	bool rosalina = R_SUCCEEDED(r);
-	if (!rosalina)
-	{
-		errorScreen("Failed getting handle", "The attempt to connect to the rosalina debugger control service failed.");
-		return false;
-	}
-
-	return hbldr && rosalina;
-}
-
 static Result ROSALINA_EnableDebugger(bool enabled)
 {
 	u32 *cmdbuf = getThreadCommandBuffer();
@@ -26,6 +12,24 @@ static Result ROSALINA_EnableDebugger(bool enabled)
 	Result rc = svcSendSyncRequest(rosalinaHandle);
 	rc = cmdbuf[1];
 	return rc;
+}
+
+static bool init(void)
+{
+	bool hbldr = R_SUCCEEDED(svcConnectToPort(&hbldrHandle, "hb:ldr"));
+	if (!isDebugMode())
+	{
+		return hbldr;
+	}
+	Result r = srvGetServiceHandle(&rosalinaHandle, "rosalina:dbg");
+	bool rosalina = R_SUCCEEDED(r);
+	if (!rosalina)
+	{
+		errorScreen("Failed getting handle", "The attempt to connect to the rosalina debugger control service failed.");
+		return false;
+	}
+	ROSALINA_EnableDebugger(false);
+	return hbldr && rosalina;
 }
 
 static Result ROSALINA_DebugNextApp()
@@ -73,18 +77,22 @@ static void deinit(void)
 
 static void launchFile(const char *path, argData_s *args, executableMetadata_s *em)
 {
-	Result r = ROSALINA_EnableDebugger(true);
-	if (R_FAILED(r))
+	if (isDebugMode())
 	{
-		errorScreen("Failed to enable debugger", "Rosalina failed to enable the debugger with error 0x%08lx", r);
-		return;
+		Result r = ROSALINA_EnableDebugger(true);
+		if (R_FAILED(r))
+		{
+			errorScreen("Failed to enable debugger", "Rosalina failed to enable the debugger with error 0x%08lx", r);
+			return;
+		}
+		r = ROSALINA_DebugNextApp();
+		if (R_FAILED(r))
+		{
+			errorScreen("Failed to debug next app", "Rosalina failed to start debugging session for the next app. Error code : 0x%08lx", r);
+			return;
+		}
 	}
-	r = ROSALINA_DebugNextApp();
-	if (R_FAILED(r))
-	{
-		errorScreen("Failed to debug next app", "Rosalina failed to start debugging session for the next app. Error code : 0x%08lx", r);
-		return;
-	}
+
 	if (strncmp(path, "sdmc:/", 6) == 0)
 		path += 5;
 

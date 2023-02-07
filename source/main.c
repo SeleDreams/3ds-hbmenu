@@ -7,6 +7,8 @@
 #include "ui/netsender.h"
 #include "ui/background.h"
 
+bool DEBUG_MODE = false;
+
 const uiStateInfo_s g_uiStateTable[UI_STATE_MAX] =
 	{
 		[UI_STATE_MENU] = {
@@ -41,6 +43,11 @@ const uiStateInfo_s g_uiStateTable[UI_STATE_MAX] =
 		},
 };
 
+bool isDebugMode()
+{
+	return DEBUG_MODE;
+}
+
 static void startup(void *unused)
 {
 	menuLoadFileAssoc();
@@ -53,7 +60,12 @@ const char *__romfs_path = "sdmc:/boot.3dsx";
 int main()
 {
 	Result rc;
-
+	FILE *file = fopen("sdmc:/debug_hbl.txt", "r");
+	if (file)
+	{
+		DEBUG_MODE = true;
+		fclose(file);
+	}
 	osSetSpeedupEnable(true);
 	rc = romfsInit();
 	if (R_FAILED(rc))
