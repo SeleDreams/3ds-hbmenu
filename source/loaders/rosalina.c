@@ -1,8 +1,10 @@
 #include "../common.h"
 #include <3ds/services/ptmsysm.h>
+#include <3ds/synchronization.h>
 
 static Handle hbldrHandle;
 static Handle rosalinaHandle;
+static int rosalinaRefcount;
 
 static Result ROSALINA_EnableDebugger(bool enabled)
 {
@@ -21,14 +23,26 @@ static bool init(void)
 	{
 		return hbldr;
 	}
-	Result r = srvGetServiceHandle(&rosalinaHandle, "rosalina:dbg");
-	bool rosalina = R_SUCCEEDED(r);
-	if (!rosalina)
+
+	bool rosalina = false;
+	Result res;
+	if (AtomicPostIncrement(&rosalinaRefcount))
+		res = 0;
+	else
 	{
-		errorScreen("Failed getting handle", "The attempt to connect to the rosalina debugger control service failed.");
-		return false;
+		res = srvGetServiceHandle(&rosalinaHandle, "rosalina:dbg");
+		if (R_FAILED(res))
+			AtomicDecrement(&rosalinaRefcount);
+		Result r = srvGetServiceHandle(&rosalinaHandle, "rosalina:dbg");
+		rosalina = R_SUCCEEDED(r);
+		if (!rosalina)
+		{
+			errorScreen("Failed getting handle", "The attempt to connect to the rosalina debugger control service failed.");
+			return false;
+		}
+		ROSALINA_EnableDebugger(false);
 	}
-	ROSALINA_EnableDebugger(false);
+
 	return hbldr && rosalina;
 }
 
@@ -72,11 +86,20 @@ static Result HBLDR_SetArgv(const void *buffer, u32 size)
 static void deinit(void)
 {
 	svcCloseHandle(hbldrHandle);
+	if (AtomicDecrement(&rosalinaHandle))
+		return;
 	svcCloseHandle(rosalinaHandle);
 }
 
 static void launchFile(const char *path, argData_s *args, executableMetadata_s *em)
 {
+
+	if (strncmp(path, "sdmc:/", 6) == 0)
+		path += 5;
+
+	u32 *command_buffer = getThreadCommandBuffer();
+	command_buffer[0] = IPC_MakeHeader(0x101, 1, 0);
+	command_buffer[1] = true;
 	if (isDebugMode())
 	{
 		Result r = ROSALINA_EnableDebugger(true);
@@ -92,13 +115,6 @@ static void launchFile(const char *path, argData_s *args, executableMetadata_s *
 			return;
 		}
 	}
-
-	if (strncmp(path, "sdmc:/", 6) == 0)
-		path += 5;
-
-	u32 *command_buffer = getThreadCommandBuffer();
-	command_buffer[0] = IPC_MakeHeader(0x101, 1, 0);
-	command_buffer[1] = true;
 	HBLDR_SetTarget(path);
 	HBLDR_SetArgv(args->buf, sizeof(args->buf));
 	uiExitLoop();
